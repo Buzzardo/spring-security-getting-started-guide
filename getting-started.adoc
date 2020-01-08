@@ -1,0 +1,1528 @@
+== Getting Started with Spring Security
+
+This chapter offers a "`quick start`" experience for Spring Security.
+If you have never used Spring Security and do not know where to start, start here.
+
+[[securing-a-simple-web-application]]
+=== Securing a Simple Web Application
+
+We start with our most common scenario: securing a web application.
+Later, we cover <<securing-a-non-web-application,how to secure non-web applications>>.
+
+[[security-getting-started-the-web-application]]
+==== The Web Application
+
+Before we can secure a web application, we need a web application.
+
+NOTE: We use the same example that we used in the "`Securing a Web Application`" guide, which you can find on the Spring web site at https://spring.io/guides/gs/securing-web/[https://spring.io/guides/gs/securing-web/].
+
+For this example, we use Spring Boot with the Spring Web and Thymeleaf dependencies.
+There are lots of ways to make a web application, but we know this one well, since we have documented it elsewhere.
+
+We start with the build files for both Maven and Gradle (in case you prefer one or the other).
+The following listing shows the build file for Maven (`pom.xml`):
+
+====
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.2.0.RELEASE</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example</groupId>
+	<artifactId>securing-web</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>securing-web</name>
+	<description>Demo project for Spring Boot</description>
+
+	<properties>
+		<java.version>1.8</java.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>org.junit.vintage</groupId>
+					<artifactId>junit-vintage-engine</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+----
+====
+
+The following listing shows the build file for Gradle (`build.gradle`):
+
+====
+[source,java]
+----
+plugins {
+	id 'org.springframework.boot' version '2.2.0.RELEASE'
+	id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+	id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+}
+
+test {
+	useJUnitPlatform()
+}
+----
+====
+
+After the build files, we need some HTML files.
+We start where a visitor would start, at `home.html`.
+
+IMPORTANT: The HTML files go in the `resources/templates` directory.
+Spring Boot knows to look for them in that location.
+
+The following listing shows our `home.html` file:
+
+====
+[source,html]
+----
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="https://www.thymeleaf.org" xmlns:sec="https://www.thymeleaf.org/thymeleaf-extras-springsecurity3">
+    <head>
+        <title>Spring Security Example</title>
+    </head>
+    <body>
+        <h1>Welcome!</h1>
+
+        <p>Click <a th:href="@{/hello}">here</a> to see a greeting.</p>
+    </body>
+</html>
+----
+====
+
+We also need a `hello.html` file, so that visitors to our web site can see the greeting we mention in the `home.html` file.
+The following listing shows the `home.html` file:
+
+====
+[source,html]
+----
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="https://www.thymeleaf.org"
+      xmlns:sec="https://www.thymeleaf.org/thymeleaf-extras-springsecurity3">
+    <head>
+        <title>Hello, World!</title>
+    </head>
+    <body>
+        <h1>Hello, world!</h1>
+    </body>
+</html>
+----
+====
+
+Once we have HTML pages for our visitors to see, we need to route them to the pages.
+We do that with a class that implements the `WebMvcConfigurer` (from the Spring framework).
+The following listing shows that class, which is called `MvcConfig`:
+
+====
+[source,java]
+----
+package com.example.securingweb;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class MvcConfig implements WebMvcConfigurer {
+
+    public void addViewControllers(ViewControllerRegistry registry) {
+        registry.addViewController("/home").setViewName("home");
+        registry.addViewController("/").setViewName("home");
+        registry.addViewController("/hello").setViewName("hello");
+    }
+
+}
+----
+====
+
+Last but not least, we need an application class to give us an entry point for our program.
+We call it `SecuringWebApplication` even though it is not yet secure.
+We will get there soon, though.
+The following application shows the `SecuringWebApplication` class:
+
+====
+[source,java]
+----
+package com.example.securingweb;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SecuringWebApplication {
+
+    public static void main(String[] args) throws Throwable {
+        SpringApplication.run(SecuringWebApplication.class, args);
+    }
+
+}
+----
+====
+
+If we run this application now, we would see an unsecured web application.
+Next, we show how to make it be a secure application.
+
+[[security-getting-started-basic-authentication]]
+==== Basic Authentication
+
+Spring Security offers many different kinds of authentication, including authenticating from many different databases (we address that in the next topic), LDAP, OAuth, and others.
+We start with the simplest form of authentication: basic authentication.
+
+IMPORTANT: You should never use basic authentication for a real application, because security details end up in the code.
+However, basic authentication gives us a good way to talk about the underlying principles of Spring Security before we move on to a more realistic scenario.
+
+To secure the simple web application presented in the <<security-getting-started-the-web-application,preceding section>>, we need to add the appropriate Spring Security dependencies to our build file (we show both Maven and Gradle).
+
+For Gradle, we need to add the following two lines to the `dependencies` block in our `build.gradle` file:
+
+====
+[source,java]
+----
+implementation 'org.springframework.boot:spring-boot-starter-security'
+implementation 'org.springframework.security:spring-security-test'
+----
+====
+
+The following listing shows the final `build.gradle` file:
+
+====
+[source,java]
+----
+plugins {
+	id 'org.springframework.boot' version '2.2.0.RELEASE'
+	id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+	id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.security:spring-security-test'
+	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+}
+
+test {
+	useJUnitPlatform()
+}
+----
+====
+
+For Maven, we need to add the following two dependencies to the `dependencies` element in our `pom.xml` file:
+
+====
+[source,xml]
+----
+<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+<dependency>
+	<groupId>org.springframework.security</groupId>
+	<artifactId>spring-security-test</artifactId>
+	<scope>test</scope>
+</dependency>
+----
+====
+
+The following listing shows the final `pom.xml` file:
+
+====
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.2.0.RELEASE</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example</groupId>
+	<artifactId>securing-web</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>securing-web</name>
+	<description>Demo project for Spring Boot</description>
+
+	<properties>
+		<java.version>1.8</java.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>org.junit.vintage</groupId>
+					<artifactId>junit-vintage-engine</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+----
+====
+
+We also need a login page. The following HTML file serves that need:
+
+====
+[source,html]
+----
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="https://www.thymeleaf.org"
+      xmlns:sec="https://www.thymeleaf.org/thymeleaf-extras-springsecurity3">
+    <head>
+        <title>Spring Security Example </title>
+    </head>
+    <body>
+        <div th:if="${param.error}">
+            Invalid username and password.
+        </div>
+        <div th:if="${param.logout}">
+            You have been logged out.
+        </div>
+        <form th:action="@{/login}" method="post">
+            <div><label> User Name : <input type="text" name="username"/> </label></div>
+            <div><label> Password: <input type="password" name="password"/> </label></div>
+            <div><input type="submit" value="Sign In"/></div>
+        </form>
+    </body>
+</html>
+----
+====
+
+We also need to add a line to our `MvcConfig` class, as the following listing shows:
+
+====
+[source,java]
+----
+package com.example.securingweb;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class MvcConfig implements WebMvcConfigurer {
+
+    public void addViewControllers(ViewControllerRegistry registry) {
+        registry.addViewController("/home").setViewName("home");
+        registry.addViewController("/").setViewName("home");
+        registry.addViewController("/hello").setViewName("hello");
+        registry.addViewController("/login").setViewName("login"); <1>
+    }
+
+}
+----
+<1> We need to add this line to make the `/login` path work.
+====
+
+We also need a class to configure security for our web application.
+The following listing shows that class (called `WebSecurityConfig`):
+
+====
+[source,java]
+----
+package com.example.securingweb;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .authorizeRequests() <1>
+                .antMatchers("/", "/home").permitAll() <2>
+                .anyRequest().authenticated() <3>
+                .and()
+            .formLogin() <4>
+                .loginPage("/login") <5>
+                .permitAll()
+                .and()
+            .logout() <6>
+                .permitAll();
+    }
+
+    @Bean
+    @Override
+    public UserDetailsService userDetailsService() {
+        UserDetails user = <7>
+             User.withDefaultPasswordEncoder()
+                .username("user") <8>
+                .password("password") <9>
+                .roles("USER") <10>
+                .build(); <11>
+
+        return new InMemoryUserDetailsManager(user);
+    }
+}
+----
+<1> Turn on security by authorizing request.
+<2> Let anyone see the default and `home` paths.
+<3> Require that any request be authenticated. (This is where we apply security.)
+<4> Allow a login form.
+<5> Allow that form from the `/login` path.
+<6> Let anyone see the logout page.
+<7> Define a user object.
+<8> The user's user name is `user`.
+<9> The user's user name is `password`.
+<10> The user's role is `USER`.
+<11> Build the user object.
+====
+
+WARNING: _NEVER_ put user names and passwords in code for a real application.
+It is tolerable for demonstrations and samples, but it is very poor practice for real applications.
+
+The `WebSecurityConfig` class has two key parts: A `configure` method (which overrides the `configure` method in `WebSecurityConfigurerAdapter`) and a `UserDetailsService` bean.
+The `configure` method has a chain of methods that define the security for the paths in our application.
+In essence, the preceding configuration says, "`Let anyone see the login and logout pages. Make everyone authenticate (log in) to see anything else.`"
+We also define the one and only user who can view our web application.
+Normally, we would get user details from a database or an LDAP or OAuth server (or from some other source - many options exist).
+We created this simple arrangement to show the basic outline of what happens.
+
+==== Authenticating with a Database
+
+One of the most common ways to store user data is in a database.
+It is so common that Spring Security even has its own database schema with which it can work.
+You can either use the Spring Security schema or create a custom one.
+In this example, we use a MySQL database.
+You can use many other databases, though.
+Spring Security supports many databases, and you can write custom classes to support pretty much any database.
+
+For the sake of simplicity, we use the Spring Security schema in this example.
+To match the Spring Security schema, we can use the following SQL statements in MySQL's command line to create the tables we need:
+
+====
+[source,sql]
+----
+create table users(
+	username varchar(50) not null primary key,
+	password varchar(100) not null,
+	enabled boolean not null
+);
+create table authorities (
+	username varchar(50) not null,
+	authority varchar(50) not null,
+	constraint fk_authorities_users foreign key(username) references users(username)
+);
+----
+====
+
+We also need an index, which we can create with the following command:
+
+====
+[source,sql]
+----
+create unique index ix_auth_username on authorities (username,authority);
+----
+====
+
+From there, we can create our user record and set up its authority, as follows:
+
+====
+[source,sql]
+----
+insert into users(username,password,enabled) values('user','$2a$10$FShxdbQCgfQK/4D5r5siFe8Fx/MJesnji49Tttgk.4ax52mEwNS8y',true);
+insert into authorities(username,authority)  values('user','ROLE_USER');
+----
+====
+
+What is going on with that password?
+We encoded the password (which is `password`, as it was in the basic auth example <<security-getting-started-basic-authentication,shown earlier>>) with bcrypt.
+The user types `password`, and `BCryptPasswordEncoder` turns it into that string for us so that it matches the value in the database.
+We cover that a bit later in this section.
+
+How did we get that string?
+We wrote a simple program that converts the string, `password`, into a bcrypt value.
+The following listing shows that program:
+
+====
+[source,java]
+----
+package security.utilities.passwordencoder;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+public class PasswordEncoder {
+
+	public static void main(String[] args) {
+		String encodedpassword=new BCryptPasswordEncoder().encode("password");
+		System.out.println(encodedpassword);
+	}
+
+}
+----
+====
+
+To get our database to work, we need to set some values in the `application properties` file (in the `resources` directory of our application).
+The following listing shows those values:
+
+====
+[source]
+----
+spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+spring.datasource.url=jdbc:mysql://localhost:3306/security?useSSL=false
+spring.datasource.username=root
+spring.datasource.password=password
+----
+====
+
+CAUTION: Do NOT set your username to `root` and your password to `password` for a real application.
+We did it here because this is an example.
+
+To get the application to work, we have to add two dependencies: a MySQL connection and Spring Data JDBC.
+The following listing shows the new `pom.xml` file:
+
+====
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.2.0.RELEASE</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.example</groupId>
+	<artifactId>securing-web</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>securing-web</name>
+	<description>Demo project for Spring Boot</description>
+
+	<properties>
+		<java.version>1.8</java.version>
+	</properties>
+
+	<dependencies>
+		<dependency> <1>
+    		<groupId>mysql</groupId>
+    		<artifactId>mysql-connector-java</artifactId>
+    		<version>5.1.25</version>
+		</dependency>
+		<dependency> <2>
+      		<groupId>org.springframework.boot</groupId>
+      		<artifactId>spring-boot-starter-data-jdbc</artifactId>
+    	</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+			<exclusions>
+				<exclusion>
+					<groupId>org.junit.vintage</groupId>
+					<artifactId>junit-vintage-engine</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
+----
+<1> The connector dependency.
+<2> The Spring Data JDBC dependency.
+====
+
+We also need substantial changes to our `WebSecurityConfig` class.
+In particular, we can remove the `UserDetailsService` bean, and we need to add a `configure` method that uses `AuthenticationManagerBuilder` as a parameter.
+We also need to define a data source (which finds our database).
+Note that this method is an override of the `configure` method in `WebSecurityConfigurerAdapter`.
+The following listing shows our new `WebSecurityConfig` class:
+
+====
+[source,java]
+----
+package com.example.securingweb;
+
+import javax.sql.DataSource;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+	@Autowired
+	private DataSource dataSource; <1>
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+
+        http
+            .authorizeRequests()
+                .antMatchers("/", "/home").permitAll()
+                .anyRequest().authenticated()
+                .and()
+            .formLogin()
+                .loginPage("/login")
+                .permitAll()
+                .and()
+            .logout()
+                .permitAll();
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception { <2>
+
+      auth.jdbcAuthentication().dataSource(dataSource)
+          .usersByUsernameQuery("select username, password, enabled"
+              + " from users where username=?")
+          .authoritiesByUsernameQuery("select username, authority "
+              + "from authorities where username=?")
+          .passwordEncoder(new BCryptPasswordEncoder());
+    }
+
+}
+----
+<1> Autowire the data source.
+<2> The `configure` method that has `AuthenticationManagerBuilder` as a parameter.
+====
+
+We rely on Spring Boot to find our database (from the information in `application.properties`), so we need only autowire it here to get it to work.
+
+What does that `configure(AuthenticationManagerBuilder auth)` method do?
+The `AuthenticationManagerBuilder` exposes a method called `jdbcAuthentication`, which supports chaining other methods to define the user query that we use to see if a user matches the user name and password provided in the HTML form.
+The `jdbcAuthentication` method lets us specify the data source and then add two queries, one for the user and one for the authority.
+It also lets us specify the password encoder.
+Since we specify `BCryptPasswordEncoder`, the password provided by the user in the form matches the bcrypt-encoded password that we inserted into the database earlier, so long as the user types `password`.
+
+Why do we not need `UserDetailsService`?
+The `jdbcAuthentication` method provides a `JdbcUserDetailsManagerConfigurer` object, which does the same thing as `UserDetailsService` and lets us connect to a database.
+`AuthenticationManagerBuilder.jdbcAuthentication` is the heart of this example.
+
+[[securing-an-angular-web-application]]
+=== Securing an Angular Web Application
+
+In the previous section, we showed how to secure a simple web application.
+However, many web applications do not work in such a simple fashion.
+Many web applications separate the front end from the back end by using one or more libraries to develop the front end.
+One of the more popular of those libraries is Angular.
+This section shows how to use Spring Security to secure an Angular application (with a Spring Boot application as the back end).
+
+NOTE: For this section, we adapted Dave Syer's Spring Boot with Angular tutorial, which you can find https://spring.io/guides/tutorials/spring-security-and-angular-js/[here].
+That tutorial offers more detail, including tests.
+
+For this guide, we work through the following steps:
+
+. <<angular-create-spring-boot-application>>
+. <<angular-create-angular-application>>
+. <<angular-customize-angular-application>>
+. <<angular-adding-dynamic-content>>
+. <<angular-how-it-works>>
+. <<angular-adding-form-based-login>>
+
+[[angular-create-spring-boot-application]]
+==== Create a Spring Boot Application
+
+To get started, you need to create a Spring Boot Application.
+To do so:
+
+. Go to https://start.spring.io (the Spring Initializr).
+. Change the artifact for your application whatever you like.
+(We use `spring-security-angular` and leave the group as `com.example`).
+. Add the Spring Security and Spring Web dependencies.
+The following image shows what the Spring Initializr looks like for this example:
+
+image::angular-basic/images/initializr.png[]
+
+[[angular-create-angular-application]]
+==== Create an Angular Application
+
+NOTE: For this section, we adapted Dave Syer's Spring Boot with Angular sample, which you can find https://github.com/dsyer/spring-boot-angular[here].
+
+Developing an Angular application is sufficiently complex that we have moved it into its own document.
+If you are comfortable with Angular, you can probably skip it.
+If you are new to Angular, you should probably read it before reading the rest of this document.
+
+[[angular-customize-angular-application]]
+==== Customize the Angular Application
+
+Now we can customize the Angular application. To do so, we need to modify the `app.component.ts` file, as follows:
+
+====
+[source,javascript]
+----
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  title = 'Demo';
+  greeting = {'id': 'XXX', 'content': 'Hello World'};
+}
+----
+====
+
+We also need to modify the corresponding HTML file (`app.component.html`), as follows:
+
+====
+[source,html]
+----
+<div style="text-align:center"class="container">
+  <h1>
+    Welcome {{title}}!
+  </h1>
+  <div class="container">
+    <p>Id: <span>{{greeting.id}}</span></p>
+    <p>Message: <span>{{greeting.content}}!</span></p>
+  </div>
+</div>
+----
+====
+
+Now the application shows a greeting.
+
+[[angular-adding-dynamic-content]]
+==== Adding Dynamic Content
+
+So far, the greeting has been hard-coded.
+Most web applications need more functionality than that, so we need to add some dynamic content.
+We start by adjusting the Java application class (`UiApplication.java`), as follows:
+
+====
+[source,java]
+----
+@SpringBootApplication
+@RestController
+public class UiApplication {
+
+  @RequestMapping("/resource")
+  public Map<String,Object> home() {
+    Map<String,Object> model = new HashMap<String,Object>();
+    model.put("id", UUID.randomUUID().toString());
+    model.put("content", "Hello World");
+    return model;
+  }
+
+  public static void main(String[] args) {
+    SpringApplication.run(UiApplication.class, args);
+  }
+
+}
+----
+====
+
+The `/resource` endpoint is secure by default.
+If you `curl` to it, you can see that it is secure, as follows:
+
+====
+[source,bash]
+----
+$ curl localhost:8080/resource
+{"timestamp":1420442772928,"status":401,"error":"Unauthorized","message":"Full authentication is required to access this resource","path":"/resource"}
+----
+====
+
+==== Loading a Dynamic Resource with Angular
+
+We want to show that security message in the browser.
+To do so, we need to modify both `app.component.ts` and `app.module.ts`.
+The following listing shows the updated `app.component.ts`:
+
+====
+[source,javascript]
+----
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  title = 'Demo';
+  greeting = {};
+  constructor(private http: HttpClient) {
+    http.get('resource').subscribe(data => this.greeting = data); <1>
+  }
+}
+----
+<1> Do a GET against the `resource` endpoint.
+====
+
+The following listing shows the updated `app.module.ts`:
+
+====
+[source,javascript]
+----
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+
+import { AppComponent } from './app.component';
+import { HttpClientModule } from '@angular/common/http';
+
+@NgModule({
+  declarations: [
+    AppComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule
+  ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+----
+====
+
+When you run the application again (or refresh the page in your browser), you can see the dynamic greeting and its unique ID.
+
+[[angular-how-it-works]]
+==== How it Works
+
+If you use the developer tools that are available in some browsers (such as those you see when you press F12 in Chrome), you
+can see the interaction between the server and your browser as it readies the application.
+The following table shows what happens:
+
+.Application-browser Interaction
+[cols="1,1,1,3", options="header"]
+|====
+^|*Verb* ^|*Path* ^|*Status* ^|*Response*
+|`GET`
+|`/`
+|`401`
+|Browser prompts for authentication
+
+|`GET`
+|`/`
+|`200`
+|index.html
+
+|`GET`
+|`/*.js`
+|`200`
+|Loads of third assets from angular
+
+|`GET`
+|`/main.bundle.js`
+|`200`
+|Application logic
+
+|`GET`
+|`/resource`
+|`200`
+|JSON greeting
+|====
+
+[[angular-adding-form-based-login]]
+==== Adding Form-based Login
+
+In the <<angular-create-angular-application>> section, we create a simple Angular application with Spring Boot as its backend.
+The trouble is that it is not as attractive as it could be and (much more importantly for our purposes) not as secure as it could be.
+In particular:
+
+* Basic authentication is restricted to username and password authentication.
+* The authentication UI is ugly (a browser dialog).
+* There is no protection from Cross Site Request Forgery (CSRF).
+
+We can solve those problems by adding form-based login and securing it with Spring Security.
+
+TIP: If you are working through this section with the sample application, be sure to clear your browser cache of cookies and HTTP Basic credentials.
+In Chrome, the best way to do that for a single server is to open a new incognito window.
+
+===== Adding Navigation to the Home Page
+
+For form-based login to make sense, we need to add some simple navigation to our application.
+We want to add *Login*, *Logout*, and *Home* buttons.
+We can do that in `app.component.html`, as follows:
+
+====
+[source,html]
+----
+<div class="container">
+  <ul class="nav nav-pills">
+    <li><a routerLinkActive="active" routerLink="/home">Home</a></li>
+    <li><a routerLinkActive="active" routerLink="/login">Login</a></li>
+    <li><a (click)="logout()">Logout</a></li>
+  </ul>
+</div>
+<div class="container">
+  <router-outlet></router-outlet>
+</div>
+----
+====
+
+Now we have a navigation container with our three options.
+We can style these three elements as we wish, which gives us much more flexibility than a dialog box and the ability to make a much more attractive application.
+
+We also defined a container that holds a `<router-outlet/>` element.
+Angular provides the `<router-outlet/>` element to let us put the content from various routes in that container.
+We need to wire it to a component in the main module. We need one component per route (that is, per menu link), a helper service to glue them together, and the ability to share state (through `AppService`).
+
+A new version of `app.module.ts` can do all that for us:
+
+====
+[source,javascript]
+----
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { HttpClientModule } from '@angular/common/http';
+import { RouterModule, Routes } from '@angular/router';
+import { AppService } from './app.service';
+import { HomeComponent } from './home.component';
+import { LoginComponent } from './login.component';
+import { AppComponent } from './app.component';
+
+const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'home'},
+  { path: 'home', component: HomeComponent},
+  { path: 'login', component: LoginComponent}
+];
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    HomeComponent,
+    LoginComponent
+  ],
+  imports: [
+    RouterModule.forRoot(routes),
+    BrowserModule,
+    HttpClientModule,
+    FormsModule
+  ],
+  providers: [AppService]
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+----
+====
+
+A dependency on the Angular `RouterModule` module lets us inject a router into the constructor of the `AppComponent`.
+We use the routes inside of the imports of the `AppModule` to set up links to `/` (the "`home`" controller) and `login` (the "`login`" controller).
+
+We also included `FormsModule`, because we need it later to bind data to a form.
+
+The UI components are all "`declarations`", and the service glue is a "`provider`".
+The `AppComponent` does not really do much.
+The following listing shows the TypeScript component that goes with the application root:
+
+====
+[source,javascript]
+----
+import { Component } from '@angular/core';
+import { AppService } from './app.service';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+import 'rxjs/add/operator/finally';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  constructor(private app: AppService, private http: HttpClient, private router: Router) {
+      this.app.authenticate(undefined, undefined);
+    }
+    logout() {
+      this.http.post('logout', {}).finally(() => {
+          this.app.authenticated = false;
+          this.router.navigateByUrl('/login');
+      }).subscribe();
+    }
+
+}
+----
+====
+
+Consider the following features of the preceding listing:
+
+* There is some more dependency injection, this time of the `AppService`.
+* There is a logout function exposed as a property of the component.
+Later, we can use it to send a logout request to the backend.
+It sets a flag in the app service and sends the user back to the login screen (it does so unconditionally in a finally() callback).
+* We use `templateUrl` to externalize the template HTML into a separate file.
+* The `authenticate()` function is called when the controller is loaded, to see if the user is actually already authenticated (for example, if he had refreshed the browser in the middle of a session).
+We need the `authenticate()` function to make a remote call, because the actual authentication is done by the server, and we do not trust the browser to keep track of it.
+
+The `app` service that we injected needs a boolean flag so that we can tell if the user is currently authenticated.
+It also needs a function called `authenticate()` that we can use to authenticate with the backend server or to query for the user details.
+The following listing shows `app.service.ts`:
+
+====
+[source,javascript]
+----
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+
+@Injectable()
+export class AppService {
+
+  authenticated = false;
+
+  constructor(private http: HttpClient) {
+  }
+
+  authenticate(credentials, callback) {
+
+        const headers = new HttpHeaders(credentials ? {
+            authorization : 'Basic ' + btoa(credentials.username + ':' + credentials.password)
+        } : {});
+
+        this.http.get('user', {headers: headers}).subscribe(response => {
+            if (response['name']) {
+                this.authenticated = true;
+            } else {
+                this.authenticated = false;
+            }
+            return callback && callback();
+        });
+
+    }
+
+}
+----
+====
+
+If HTTP Basic authentication credentials are provided, the `authenticate()` function sends them.
+Otherwise, it does not.
+It also has an optional `callback` argument that we can use to run some code if the authentication is successful.
+
+==== Setting up the Greeting
+
+The greeting content from the previous home page can go right next to `app.component.html` in `src/app`, as follows:
+
+====
+[source,html]
+----
+<h1>Greeting</h1>
+<div [hidden]="!authenticated()">
+	<p>The ID is {{greeting.id}}</p>
+	<p>The content is {{greeting.content}}</p>
+</div>
+<div [hidden]="authenticated()">
+	<p>Login to see your greeting</p>
+</div>
+----
+====
+
+Since the user now has a choice of whether to login or not (before, it was all controlled by the browser), we need to distinguish in the UI between content that is secure and content that is not.
+We have anticipated this by adding references to an (as yet non-existent) `authenticated()` function.
+
+The `HomeComponent` has to fetch the greeting and provide the `authenticated()` utility function that pulls the flag out of the AppService.
+The following listing shows `home.component.ts`:
+
+====
+[source,javascript]
+----
+import { Component, OnInit } from '@angular/core';
+import { AppService } from './app.service';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  templateUrl: './home.component.html'
+})
+export class HomeComponent {
+
+  title = 'Demo';
+  greeting = {};
+
+  constructor(private app: AppService, private http: HttpClient) {
+    http.get('resource').subscribe(data => this.greeting = data);
+  }
+
+  authenticated() { return this.app.authenticated; }
+
+}
+----
+====
+
+
+==== Setting up the Login Form
+
+The login form also gets its own component (in `login.component.html`), as follows:
+
+====
+[source,html]
+----
+<div class="alert alert-danger" [hidden]="!error">
+	There was a problem logging in. Please try again.
+</div>
+<form role="form" (submit)="login()">
+	<div class="form-group">
+		<label for="username">Username:</label> <input type="text"
+			class="form-control" id="username" name="username" [(ngModel)]="credentials.username"/>
+	</div>
+	<div class="form-group">
+		<label for="password">Password:</label> <input type="password"
+			class="form-control" id="password" name="password" [(ngModel)]="credentials.password"/>
+	</div>
+	<button type="submit" class="btn btn-primary">Submit</button>
+</form>
+----
+====
+
+This login form shares a common structure with a lot of Angular login forms.
+It has two inputs (username and password) and a button that submits the form to an Angular event handler.
+We do not need an action on the form tag, so it is probably better not to put one in at all.
+There is also an error message, shown only if the angular model contains an error.
+The form controls use `ngModel` (from the Angular Forms module) to pass data between the HTML and the Angular controller.
+In this case, we use a credentials object to hold the username and password.
+
+==== Supporting the Authentication Process
+
+To support the login form, we need to add some more features.
+On the client side, these are implemented in the login component.
+On the server, it is defined in the Spring Security configuration.
+
+===== Submitting the Login Form
+
+To submit the form, we need to define the `login()` function that we referenced (in the form) with `ng-submit` and the credentials object that we referenced with `ng-model`.
+Now we can flesh out the "`login`" component, as follows:
+
+====
+[source,javascript]
+----
+import { Component, OnInit } from '@angular/core';
+import { AppService } from './app.service';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+
+@Component({
+  templateUrl: './login.component.html'
+})
+export class LoginComponent {
+
+  credentials = {username: '', password: ''};
+
+  constructor(private app: AppService, private http: HttpClient, private router: Router) {
+  }
+
+  login() {
+    this.app.authenticate(this.credentials, () => {
+        this.router.navigateByUrl('/');
+    });
+    return false;
+  }
+
+}
+----
+====
+
+In addition to initializing the credentials object, it defines the `login()` function that we need in the form.
+
+The `authenticate()` call makes a `GET` request to a relative resource (relative to the deployment root of your application): `/user`.
+When called from the `login()` function, it adds the Base64-encoded credentials in the headers so that, on the server, it does an authentication and accepts a cookie in return.
+The `login()` function also sets a local `$scope.error` flag accordingly when we get the result of the authentication.
+This flag is used to control the display of the error message above the login form.
+
+===== Adding the `/user` Endpoint
+
+To service the `authenticate()` function, we need to add a new endpoint to the backend, as follows:
+
+====
+[source,java]
+----
+@SpringBootApplication
+@RestController
+public class UiApplication {
+
+  @RequestMapping("/user")
+  public Principal user(Principal user) {
+    return user;
+  }
+
+  // The rest of the class...
+
+}
+----
+====
+
+This code demonstrates a useful trick that you can use in a Spring Security application.
+If the `/user` resource is reachable, it returns the currently authenticated user (an `Authentication`).
+Otherwise, Spring Security intercepts the request and sends a 401 response through an `AuthenticationEntryPoint`.
+
+===== Handling the Login Request on the Server
+
+Spring Security makes it easy to handle the login request.
+We need to add some configuration to our main application class.
+In this case, we add it as an inner class:
+
+====
+[source,java]
+----
+@SpringBootApplication
+@RestController
+public class UiApplication {
+
+  // The rest of the class...
+
+  @Configuration
+  @Order(SecurityProperties.ACCESS_OVERRIDE_ORDER)
+  protected static class SecurityConfiguration extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+      http
+        .httpBasic()
+      .and()
+        .authorizeRequests()
+          .antMatchers("/index.html", "/", "/home", "/login").permitAll()
+          .anyRequest().authenticated();
+    }
+  }
+
+}
+----
+====
+
+This is a standard Spring Boot application with Spring Security customization.
+It allows anonymous access to the static (HTML) resources.
+The HTML resources need to be available to anonymous users, rather than being ignored by Spring Security, for reasons that we cover soon.
+
+The last thing we need to remember is to make the JavaScript components provided by Angular available anonymously to the application.
+We could do that in the `HttpSecurity` configuration (in the preceding listing)
+However, since it is static content, it is better to ignore it.
+We can do so with a bit of configuration in our `application.yml` file, as follows:
+
+====
+[source,yaml]
+----
+	security:
+		ignored:
+		- "*.bundle.*"
+----
+====
+
+===== Adding Default HTTP Request Headers
+
+If you run the application at this point, the browser pops up a Basic authentication dialog (for the username and password).
+It does so because it sees a 401 response from the XHR requests to `/user` and `/resource` with a `WWW-Authenticate` header.
+To suppress this popup, suppress the header, which comes from Spring Security.
+The way to suppress the response header is to send a special, conventional request header named `X-Requested-With=XMLHttpRequest`. (It used to be the default in Angular, but they took it out in 1.3.0.)
+So here is how to set default headers in an Angular XHR request.
+
+First, we need to extend the default `RequestOptions` provided by the Angular HTTP module in `app.module.ts`, as follows:
+
+====
+[source,javascript]
+----
+@Injectable()
+export class XhrInterceptor implements HttpInterceptor {
+
+  intercept(req: HttpRequest<any>, next: HttpHandler) {
+    const xhr = req.clone({
+      headers: req.headers.set('X-Requested-With', 'XMLHttpRequest')
+    });
+    return next.handle(xhr);
+  }
+}
+----
+====
+
+The syntax here is boilerplate.
+The `implements` property of the `Class` is its base class.
+Also, in addition to the constructor, we need to override the `intercept()` function, which is always called by Angular and can be used to add additional headers.
+
+To install this new `RequestOptions` factory, we need to declare it in the providers of the AppModule (in `app.module.ts`), as follows:
+
+====
+[source,javascript]
+----
+@NgModule({
+  ...
+  providers: [AppService, { provide: HTTP_INTERCEPTORS, useClass: XhrInterceptor, multi: true }],
+  ...
+})
+export class AppModule { }
+----
+====
+
+===== Implementing Logout
+
+The application is almost finished, at least functionally.
+(We are not concerned with appearance in this guide.)
+The last thing we need to do is implement the logout feature that we sketched in the home page.
+If the user is authenticated, we show a "`Logout`" link and hook it to a `logout()` function in the `AppComponent`.
+Remember, it sends an HTTP POST to `/logout` which we now need to implement on the server.
+This is straightforward because, it is added for us already by Spring Security (that is, we need not do anything for this simple use case).
+For more control over the logout behavior, you could use the HttpSecurity callbacks in your `WebSecurityAdapter` to, for instance, run some business logic after logout.
+
+===== Adding CSRF Protection
+
+The application is almost ready to use.
+If you run it, you can see that everything we built so far actually works, except for the "`Logout`" link.
+Try using it and look at the responses in the browser to see why it is not yet finished.
+You should see something similar to the following listing:
+
+====
+[source]
+----
+POST /logout HTTP/1.1
+...
+Content-Type: application/x-www-form-urlencoded
+
+username=user&password=password
+
+HTTP/1.1 403 Forbidden
+Set-Cookie: JSESSIONID=3941352C51ABB941781E1DF312DA474E; Path=/; HttpOnly
+Content-Type: application/json;charset=UTF-8
+Transfer-Encoding: chunked
+...
+
+{"timestamp":1420467113764,"status":403,"error":"Forbidden","message":"Expected CSRF token not found. Has your session expired?","path":"/login"}
+----
+====
+
+Getting this response is a good sign, because it means that Spring Security’s built-in CSRF protection is working.
+It wants to find a token in a header called `X-CSRF`.
+The value of the CSRF token was available server side in the `HttpRequest` attributes from the initial request that loaded the home page.
+To get it to the client, we could render it by using a dynamic HTML page on the server, expose it through a custom endpoint, or send it as a cookie.
+The last choice is best, because Angular has built-in support for CSRF (which it calls "`XSRF`") based on cookies.
+
+On the server, we need a custom filter to send the cookie.
+Angular wants the cookie name to be `XSRF-TOKEN`, and Spring Security provides it as a request attribute by default, so we only need to transfer the value from a request attribute to a cookie.
+Fortunately, Spring Security (since version 4.1.0) provides a special `CsrfTokenRepository` that does precisely what we need.
+The following listing shows how to use it:
+
+====
+[source,java]
+----
+@Configuration
+@Order(SecurityProperties.ACCESS_OVERRIDE_ORDER)
+protected static class SecurityConfiguration extends WebSecurityConfigurerAdapter {
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+    http
+      // The other security setup details...
+      .and().csrf()
+        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse());
+  }
+}
+----
+====
+
+We need not do anything on the client side, and the login form now works.
+
+[[angular-how-it-works-login-form]]
+===== How It Works
+
+.Application-browser Interaction
+[cols="1,1,1,3", options="header"]
+|====
+^|*Verb* ^|*Path* ^|*Status* ^|*Response*
+|GET
+|/
+|200
+|index.html
+
+|GET
+|/*.js
+|200
+|Assets from angular
+
+|GET
+|/user
+|401
+|Unauthorized (ignored)
+
+|GET
+|/home
+|200
+|Home page
+
+|GET
+|/user
+|401
+|Unauthorized (ignored)
+
+|GET
+|/resource
+|401
+|Unauthorized (ignored)
+
+|GET
+|/user
+|200
+|Send credentials and get JSON
+
+|GET
+|/resource
+|200
+|JSON greeting
+|====
+
+The responses that are marked "`ignored`" are HTML responses received by Angular in an XHR call.
+Since we are not processing that data, the HTML is dropped.
+We do look for an authenticated user in the case of the `/user` resource.
+However, since it is not present in the first call, that response is dropped.
+
+Look more closely at the requests, and you can see that they all have cookies.
+If you start with a clean browser (for example, by using incognito mode in Chrome), the very first request has no cookies going off to the server, but the server sends back `Set-Cookie` for `JSESSIONID` (the regular `HttpSession`) and `X-XSRF-TOKEN` (the CRSF cookie that we set up earlier).
+Subsequent requests all have those cookies, and they are important.
+The application does not work without them, and they provide some basic security features (authentication and CSRF protection).
+The values of the cookies change when the user authenticates (after the `POST`) and this is another important security feature (preventing https://en.wikipedia.org/wiki/Session_fixation[session fixation attacks]).
+
+IMPORTANT: It is not adequate for CSRF protection to rely on a cookie being sent back to the server, because the browser automatically sends it, even if you are not in a page loaded from your application (a Cross Site Scripting attack, otherwise known as https://en.wikipedia.org/wiki/Cross-site_scripting[XSS]).
+The header is not automatically sent, so the origin is under control.
+You might see that, in our application, the CSRF token is sent to the client as a cookie, so we see it being sent back automatically by the browser, but it is the header that provides the protection.
+
+.Application Scaling
+****
+"`But wait,`" you might say, "`isn’t it Really Bad to use session state in a single-page application?`"
+The answer to that question is going to have to be "`mostly`", because it very definitely is a Good Thing to use the session for authentication and CSRF protection.
+That state has to be stored somewhere, and, if you take it out of the session, you are going to have to put it somewhere else and manage it manually yourself, on both the server and the client.
+That means more code and probably more maintenance and generally re-inventing a perfectly good wheel.
+
+"`But, but,`" you may respond, "`how do I scale my application horizontally now?`"
+This is the "`real`" question you were asking above, but it tends to get shortened to "Session state is bad; I must be stateless". Do not panic.
+Security is stateful.
+You cannot have a secure, stateless application.
+So where are you going to store the state?
+That is all there is to it.
+https://spring.io/team/rwinch[Rob Winch] gave a very useful and insightful talk at https://skillsmatter.com/skillscasts/5398-the-state-of-securing-restful-apis-with-spring[Spring Exchange 2014], in which he explained the need for state (and the ubiquity of it -- TCP and SSL are stateful, so your system is stateful whether you knew it or not), which is probably worth a look if you want to look into this topic in more depth.
+
+The good news is that you have a choice.
+The easiest choice is to store the session data in-memory and rely on sticky sessions in your load balancer to route requests from the same session back to the same JVM (they all support that in some way).
+That is good enough to get you off the ground and works for a really large number of use cases.
+The other choice is to share the session data between instances of your application.
+As long as you are strict and store only the security data, it is small and changes infrequently (only when users log in and out or when their session times out), so there should not be any major infrastructure problems.
+It is also really easy to do with https://github.com/spring-projects/spring-session/[Spring Session].
+It is literally a few lines of code and a Redis server, which is super fast.
+
+Another easy way to set up shared session state is to deploy your application as a WAR file to Cloud Foundry https://run.pivotal.io/[Pivotal Web Services] and bind it to a Redis service.
+****
+
+=== What to Read Next
